@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile-Only Website</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fingerprintjs2/2.1.0/fingerprint2.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        #message {
+            text-align: center;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 80%;
+        }
+        .success {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+    </style>
+</head>
+<body>
+    <div id="message">Checking your device...</div>
+
+    <script>
+    function getMobileFingerprint() {
+        return new Promise((resolve) => {
+            const options = {
+                fonts: { extendedJsFonts: true },
+                extraComponents: [
+                    {key: 'touchSupport', getData: () => 'ontouchstart' in window},
+                    {key: 'deviceOrientation', getData: () => typeof window.orientation !== 'undefined'},
+                    {key: 'screenSize', getData: () => `${window.screen.width}x${window.screen.height}`},
+                    {key: 'pixelRatio', getData: () => window.devicePixelRatio || ''},
+                    {key: 'maxTouchPoints', getData: () => navigator.maxTouchPoints || 0},
+                    {key: 'batteryAPI', getData: () => 'getBattery' in navigator},
+                    {key: 'vibrationAPI', getData: () => 'vibrate' in navigator},
+                    {key: 'accelerometer', getData: () => 'Accelerometer' in window},
+                    {key: 'gyroscope', getData: () => 'Gyroscope' in window},
+                    {key: 'magnetometer', getData: () => 'Magnetometer' in window},
+                    {key: 'mobileConnectionType', getData: () => navigator.connection ? navigator.connection.type : 'unknown'},
+                    {key: 'mobileNetworkInfo', getData: () => navigator.connection ? `${navigator.connection.effectiveType}-${navigator.connection.downlink}Mbps` : 'unknown'}
+                ]
+            };
+
+            Fingerprint2.get(options, (components) => {
+                const values = components.map(component => component.value);
+                const mobileFingerprintHash = Fingerprint2.x64hash128(values.join(''), 31);
+                
+                const isMobileLikely = analyzeMobileComponents(components);
+
+                resolve({
+                    fingerprint: mobileFingerprintHash,
+                    isMobileLikely: isMobileLikely,
+                    components: components
+                });
+            });
+        });
+    }
+
+    function analyzeMobileComponents(components) {
+        const mobileIndicators = {
+            touchSupport: true,
+            deviceOrientation: true,
+            maxTouchPoints: (value) => value > 0,
+            screenSize: (value) => {
+                const [width, height] = value.split('x').map(Number);
+                return Math.max(width, height) <= 1024;
+            },
+            pixelRatio: (value) => value > 1,
+            userAgent: (value) => /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(value),
+            batteryAPI: true,
+            vibrationAPI: true,
+            accelerometer: true,
+            gyroscope: true,
+            magnetometer: true,
+            mobileConnectionType: (value) => value !== 'unknown',
+            mobileNetworkInfo: (value) => value !== 'unknown'
+        };
+
+        let mobileScore = 0;
+        let totalChecks = 0;
+
+        components.forEach(component => {
+            if (mobileIndicators.hasOwnProperty(component.key)) {
+                totalChecks++;
+                const indicator = mobileIndicators[component.key];
+                if (typeof indicator === 'function') {
+                    if (indicator(component.value)) mobileScore++;
+                } else if (indicator === true && component.value) {
+                    mobileScore++;
+                }
+            }
+        });
+
+        return (mobileScore / totalChecks) > 0.7;
+    }
+
+    function updateMessage(isAllowed) {
+        const messageElement = document.getElementById('message');
+        if (isAllowed) {
+            messageElement.textContent = "You're an actual mobile user!";
+            messageElement.className = 'success';
+        } else {
+            messageElement.textContent = "You're blocked!";
+            messageElement.className = 'error';
+        }
+    }
+
+    // Main execution
+    getMobileFingerprint().then(result => {
+        console.log('Mobile Fingerprint:', result.fingerprint);
+        console.log('Is likely mobile:', result.isMobileLikely);
+        
+        updateMessage(result.isMobileLikely);
+    });
+    </script>
+</body>
+</html>
